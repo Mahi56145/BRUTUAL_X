@@ -1,0 +1,397 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String              @id @default(cuid())
+  name              String              @unique
+  email             String              @unique
+  passwordHash      String
+  avatarInitials    String
+  accentColor       String              @default("#6c63ff")
+  gateTarget        Int                 @default(650)
+  careerPaths       String              @default("[]") // JSON array
+  availableWindows  String              @default("{}") // JSON object
+  realityCheckStyle String              @default("savage") // gentle | savage | funny | motivational | minimal
+  realityCheckEnabled Boolean           @default(true)
+  onboardingDone    Boolean             @default(false)
+  xp                Int                 @default(0)
+  level             Int                 @default(1)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  masteryRecords    TopicMastery[]
+  studySessions     StudySession[]
+  dailySchedules    DailySchedule[]
+  spacedRevisions   SpacedRevision[]
+  collegeDeadlines  CollegeDeadline[]
+  dailyCheckIns     DailyCheckIn[]
+  goals             UserGoal[]
+  missedSessions    MissedSession[]
+  relaxationPeriods RelaxationPeriod[]
+  sharedMessages    SharedMessage[]     @relation("sender")
+  receivedMessages  SharedMessage[]     @relation("receiver")
+  weeklyReports     WeeklyReport[]
+  overtimeSlots     OvertimeSlot[]
+  quizAttempts      QuizAttempt[]
+  streak            Streak?
+  userAchievements  UserAchievement[]
+}
+
+model Subject {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String
+  icon        String
+  color       String
+  gateWeight  Float    @default(0.0) // 0-1, how much this counts for GATE
+  order       Int      @default(0)
+  topics      Topic[]
+}
+
+model Topic {
+  id                String             @id @default(cuid())
+  subjectId         String
+  subject           Subject            @relation(fields: [subjectId], references: [id])
+  name              String
+  slug              String
+  description       String
+  difficulty        Int                @default(3) // 1-5
+  importance        Int                @default(3) // 1-5
+  gateRelevance     Int                @default(3) // 1-5
+  careerRelevance   Int                @default(3) // 1-5
+  estimatedMinutes  Int                @default(60)
+  order             Int                @default(0)
+  parentTopicId     String?
+
+  prerequisites     TopicPrerequisite[] @relation("dependentTopic")
+  dependents        TopicPrerequisite[] @relation("prerequisiteTopic")
+  masteryRecords    TopicMastery[]
+  spacedRevisions   SpacedRevision[]
+  questions         Question[]
+  sessionItems      SessionItem[]
+
+  @@unique([subjectId, slug])
+}
+
+model TopicPrerequisite {
+  id               String  @id @default(cuid())
+  prerequisiteId   String
+  dependentId      String
+  prerequisite     Topic   @relation("prerequisiteTopic", fields: [prerequisiteId], references: [id])
+  dependent        Topic   @relation("dependentTopic", fields: [dependentId], references: [id])
+
+  @@unique([prerequisiteId, dependentId])
+}
+
+model TopicMastery {
+  id                 String   @id @default(cuid())
+  userId             String
+  topicId            String
+  user               User     @relation(fields: [userId], references: [id])
+  topic              Topic    @relation(fields: [topicId], references: [id])
+  // mastery is NULL = "Not Assessed" (never attempted real questions)
+  // mastery = 0-100 = calculated from real quiz/session performance
+  mastery            Float?                       // NULLABLE — null means not assessed
+  selfAssessScore    Int?                         // 0-5 from onboarding (initial self-rating)
+  isAssessed         Boolean  @default(false)     // true once real quiz/session data exists
+  confidence         Int      @default(1)         // 1-5
+  accuracy           Float    @default(0.0)       // 0-100, from real question attempts
+  questionsAttempted Int      @default(0)
+  questionsCorrect   Int      @default(0)
+  averageTimeSeconds Int      @default(0)
+  lastStudiedAt      DateTime?
+  revisionCount      Int      @default(0)
+  failureCount       Int      @default(0)
+  nextRevisionDue    DateTime?
+  revisionInterval   Int      @default(2)        // days
+  history            MasteryHistory[]
+  updatedAt          DateTime @updatedAt
+
+  @@unique([userId, topicId])
+}
+
+model MasteryHistory {
+  id           String       @id @default(cuid())
+  masteryId    String
+  mastery      TopicMastery @relation(fields: [masteryId], references: [id])
+  masteryValue Float
+  recordedAt   DateTime     @default(now())
+}
+
+model StudySession {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  date          DateTime
+  totalMinutes  Int           @default(0)
+  energyLevel   String        @default("normal") // low | normal | high
+  notes         String?
+  items         SessionItem[]
+  createdAt     DateTime      @default(now())
+}
+
+model SessionItem {
+  id              String       @id @default(cuid())
+  sessionId       String
+  session         StudySession @relation(fields: [sessionId], references: [id])
+  topicId         String
+  topic           Topic        @relation(fields: [topicId], references: [id])
+  plannedMinutes  Int
+  actualMinutes   Int          @default(0)
+  status          String       @default("pending") // pending | completed | partial | skipped
+  understanding   Int          @default(0) // 1-5
+  questionsAttempted Int       @default(0)
+  questionsCorrect   Int       @default(0)
+  activityType    String       @default("learn") // learn | practice | pyq | build | revision
+  label           String       @default("🧠 Deep Dive")
+  completedAt     DateTime?
+}
+
+model DailySchedule {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  date            DateTime
+  availableMinutes Int
+  energyLevel     String          @default("normal")
+  generatedAt     DateTime        @default(now())
+  recalculatedAt  DateTime?
+  isActive        Boolean         @default(true)
+  isRelaxationDay Boolean         @default(false)
+  relaxationMode  String?                          // complete | light | custom
+  isComebackDay   Boolean         @default(false)
+  blocks          ScheduleBlock[]
+
+  @@unique([userId, date])
+}
+
+model ScheduleBlock {
+  id              String        @id @default(cuid())
+  scheduleId      String
+  schedule        DailySchedule @relation(fields: [scheduleId], references: [id])
+  order           Int
+  startTime       String        // "19:00"
+  endTime         String        // "20:00"
+  durationMinutes Int
+  blockType       String        // study | break | revision | recall
+  label           String        @default("🧠 Deep Dive")
+  title           String
+  description     String?
+  topicId         String?
+  activityType    String?       // learn | practice | pyq | build | revision | recall
+  priorityScore   Float         @default(0.0)
+  reasonJson      String        @default("[]") // JSON array of reason strings
+  status          String        @default("pending") // pending | completed | partial | skipped
+  understanding   Int?
+  questionsAttempted Int?
+  questionsCorrect   Int?
+  actualMinutes   Int?
+  completedAt     DateTime?
+}
+
+model SpacedRevision {
+  id           String    @id @default(cuid())
+  userId       String
+  topicId      String
+  user         User      @relation(fields: [userId], references: [id])
+  topic        Topic     @relation(fields: [topicId], references: [id])
+  dueDate      DateTime
+  interval     Int       @default(2) // days
+  ease         Float     @default(2.5)
+  repetitions  Int       @default(0)
+  lastScore    Float     @default(0.0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([userId, topicId])
+}
+
+model CollegeDeadline {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  dueDate     DateTime
+  urgency     String   @default("medium") // low | medium | high | critical
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model DailyCheckIn {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  date             DateTime
+  availableMinutes Int
+  energyLevel      String   @default("normal")
+  additionalNotes  String?
+  hasDeadlines     Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  @@unique([userId, date])
+}
+
+model UserGoal {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  type        String   // gate | career | ml | dsa | college
+  title       String
+  description String?
+  targetDate  DateTime?
+  priority    Int      @default(3)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model MissedSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  reason     String   @default("unplanned") // unplanned | exam | health | travel | emergency | blocked
+  topicIds   String   @default("[]") // JSON array
+  createdAt  DateTime @default(now())
+}
+
+model RelaxationPeriod {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  startDate DateTime
+  endDate   DateTime
+  reason    String
+  examType  String?  // college_exam | gate_mock | project | travel | personal | other
+  mode      String   @default("complete") // complete | light | custom
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model SharedMessage {
+  id          String   @id @default(cuid())
+  senderId    String
+  receiverId  String
+  sender      User     @relation("sender", fields: [senderId], references: [id])
+  receiver    User     @relation("receiver", fields: [receiverId], references: [id])
+  content     String
+  type        String   @default("message") // message | reaction | encouragement
+  createdAt   DateTime @default(now())
+}
+
+model Question {
+  id          String        @id @default(cuid())
+  topicId     String
+  topic       Topic         @relation(fields: [topicId], references: [id])
+  text        String
+  optionA     String?
+  optionB     String?
+  optionC     String?
+  optionD     String?
+  answer      String
+  explanation String?
+  difficulty  Int           @default(3) // 1-5
+  type        String        @default("mcq") // mcq | short | coding
+  isGatePYQ   Boolean       @default(false)
+  gateYear    Int?
+  source      String?
+  attempts    QuizAttempt[]
+  createdAt   DateTime      @default(now())
+}
+
+model QuizAttempt {
+  id           String   @id @default(cuid())
+  userId       String
+  questionId   String
+  user         User     @relation(fields: [userId], references: [id])
+  question     Question @relation(fields: [questionId], references: [id])
+  userAnswer   String
+  isCorrect    Boolean
+  timeTakenSec Int      @default(0)
+  createdAt    DateTime @default(now())
+}
+
+model WeeklyReport {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  weekStart       DateTime
+  weekEnd         DateTime
+  totalMinutes    Int      @default(0)
+  sessionsCount   Int      @default(0)
+  avgAccuracy     Float    @default(0.0)
+  masteryGained   Float    @default(0.0)
+  topicsStudied   Int      @default(0)
+  strongestSubject String?
+  weakestSubject  String?
+  consistencyScore Float   @default(0.0)
+  reportJson      String   @default("{}") // Full JSON report
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, weekStart])
+}
+
+model OvertimeSlot {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime
+  startTime  String
+  endTime    String
+  purpose    String   @default("anything") // anything | gate | college | dsa | ml | project | revision
+  used       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────────
+// STREAK SYSTEM
+// ─────────────────────────────────────────────────
+
+model Streak {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id])
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  totalActiveDays Int       @default(0)
+  lastActiveDate  DateTime?
+  streakFrozen    Boolean   @default(false)   // true during approved relaxation period
+  frozenReason    String?
+  missedDaysCount Int       @default(0)       // consecutive missed days (resets on active day)
+  updatedAt       DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────────
+// ACHIEVEMENTS
+// ─────────────────────────────────────────────────
+
+model Achievement {
+  id          String   @id @default(cuid())
+  slug        String   @unique  // e.g. "first-7-day-streak"
+  title       String
+  description String
+  icon        String
+  xpReward    Int      @default(0)
+  category    String   @default("general") // streak | mastery | gate | dsa | consistency | comeback
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  user          User        @relation(fields: [userId], references: [id])
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([userId, achievementId])
+}
