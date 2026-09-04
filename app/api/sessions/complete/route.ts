@@ -158,8 +158,10 @@ export async function POST(req: Request) {
     data: {
       sessionId: studySession.id,
       topicId,
-      type: 'study',
-      durationMinutes: actualMinutes,
+      activityType: 'learn',
+      plannedMinutes: actualMinutes,
+      actualMinutes: actualMinutes,
+      status: 'completed',
       understanding: understanding ?? 3,
       questionsAttempted,
       questionsCorrect,

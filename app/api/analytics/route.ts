@@ -53,6 +53,7 @@ export async function GET() {
       // Subject-wise mastery
       const subjectMastery = subjects.map(subject => {
         const subjectMasteries = masteries.filter(m => m.topic.subjectId === subject.id && m.mastery !== null)
+        const allSubjectTopics = masteries.filter(m => m.topic.subjectId === subject.id)
         const avg = subjectMasteries.length > 0
           ? subjectMasteries.reduce((sum, m) => sum + (m.mastery ?? 0), 0) / subjectMasteries.length
           : 0
@@ -63,7 +64,7 @@ export async function GET() {
           icon: subject.icon,
           color: subject.color,
           avgMastery: Math.round(avg),
-          topicsTotal: subject.topics.length,
+          topicsTotal: allSubjectTopics.length,
           topicsWeak: subjectMasteries.filter(m => (m.mastery ?? 0) < 40).length,
         }
       })

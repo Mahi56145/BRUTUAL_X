@@ -61,7 +61,7 @@ export function calculatePriority(
 
   // ── 0. UNASSESSED BASELINE CHECK ──
   if (topic.isUnassessed) {
-    reasons.push('Unassessed baseline topic — needs diagnostic study')
+    reasons.push(`📋 Not yet assessed — first study session will calibrate your ${topic.topicName} baseline`)
     score += 15
   }
 
@@ -72,9 +72,15 @@ export function calculatePriority(
   const effectiveMastery = applyKnowledgeDecay(topic.mastery, daysSinceStudy)
   const weaknessScore = (1 - effectiveMastery / 100) * 40
 
-  if (!topic.isUnassessed && effectiveMastery < 40) {
-    reasons.push(`Mastery is low (${Math.round(effectiveMastery)}%)`)
+  if (!topic.isUnassessed && effectiveMastery < 20) {
+    reasons.push(`🔴 Critical weakness — mastery only ${Math.round(effectiveMastery)}%, immediate attention needed`)
     score += weaknessScore * 1.2
+  } else if (!topic.isUnassessed && effectiveMastery < 40) {
+    reasons.push(`🟠 Low mastery (${Math.round(effectiveMastery)}%) — this topic is dragging down your average`)
+    score += weaknessScore * 1.2
+  } else if (!topic.isUnassessed && effectiveMastery < 60) {
+    reasons.push(`🟡 Developing mastery (${Math.round(effectiveMastery)}%) — consistent practice will solidify this`)
+    score += weaknessScore
   } else {
     score += weaknessScore
   }
@@ -82,13 +88,22 @@ export function calculatePriority(
   // ── 2. IMPORTANCE (0-20) ──
   const importanceScore = (topic.importance / 5) * 20
   score += importanceScore
-  if (topic.importance >= 4) reasons.push('High importance topic')
+  if (topic.importance === 5) {
+    reasons.push(`⭐ Core topic (importance 5/5) — mastering this has the highest payoff in ${topic.subjectName}`)
+  } else if (topic.importance === 4) {
+    reasons.push(`📌 High-importance topic (4/5) — frequently tested in ${topic.subjectName}`)
+  }
 
   // ── 3. GATE RELEVANCE (0-20) ──
   const gateScore = (topic.gateRelevance / 5) * 20
-  if (userContext.gateTargetScore >= 600) {
+  if (userContext.gateTargetScore >= 700) {
+    score += gateScore * 1.4
+    if (topic.gateRelevance === 5) reasons.push(`🎯 GATE must-know (relevance 5/5) — high scorers consistently ace this (target: ${userContext.gateTargetScore})`)
+    else if (topic.gateRelevance >= 4) reasons.push(`🎯 High GATE relevance (${topic.gateRelevance}/5) — commonly appears in GATE CS papers`)
+  } else if (userContext.gateTargetScore >= 600) {
     score += gateScore * 1.3
-    if (topic.gateRelevance >= 4) reasons.push('Critical for GATE preparation')
+    if (topic.gateRelevance === 5) reasons.push(`🎯 Critical for GATE (relevance 5/5) — essential for a ${userContext.gateTargetScore}+ score`)
+    else if (topic.gateRelevance >= 4) reasons.push(`🎯 GATE-relevant topic (${topic.gateRelevance}/5)`)
   } else {
     score += gateScore
   }
@@ -97,52 +112,85 @@ export function calculatePriority(
   const revisionUrgency = getRevisionUrgency(topic.nextRevisionDue, topic.revisionInterval)
   const revisionScore = (revisionUrgency / 10) * 15
   score += revisionScore
-  if (revisionUrgency >= 6) reasons.push(`Revision overdue (${daysSinceStudy} days since last study)`)
-  if (revisionUrgency >= 8) reasons.push('Significantly overdue for revision')
+  if (daysSinceStudy === 999) {
+    reasons.push('🆕 Never studied — no spaced repetition cycle started yet')
+  } else if (revisionUrgency >= 9) {
+    reasons.push(`⏰ Severely overdue — ${daysSinceStudy} days since last study, knowledge decay risk is HIGH`)
+  } else if (revisionUrgency >= 7) {
+    reasons.push(`⏰ Overdue for revision by ${daysSinceStudy - topic.revisionInterval} days — spaced repetition broken`)
+  } else if (revisionUrgency >= 5) {
+    reasons.push(`🔁 Revision window open — ${daysSinceStudy} days since last study (interval: ${topic.revisionInterval}d)`)
+  }
 
   // ── 5. PREREQUISITE IMPACT (0-10) ──
   if (!topic.hasPrerequisitesMet) {
     // Penalty for prerequisites not met
     score *= 0.3
-    reasons.push('Prerequisites not completed yet')
+    reasons.push('🔒 Prerequisites not met — study foundational topics first to unlock this')
   } else {
     const prereqScore = (topic.prerequisiteImpact / 10) * 10
     score += prereqScore
-    if (topic.prerequisiteImpact >= 5) reasons.push(`Unlocks ${topic.prerequisiteImpact} dependent topics`)
+    if (topic.prerequisiteImpact >= 7) {
+      reasons.push(`🔓 Mastering this unlocks ${topic.prerequisiteImpact} dependent topics — high leverage`)
+    } else if (topic.prerequisiteImpact >= 4) {
+      reasons.push(`🔓 Gateway topic — completing this opens ${topic.prerequisiteImpact} more topics`)
+    } else if (topic.prerequisiteImpact >= 2) {
+      reasons.push(`🔓 Unlocks ${topic.prerequisiteImpact} dependent topics`)
+    }
   }
 
   // ── 6. DEADLINE URGENCY (0-20) ──
   if (topic.hasDeadlineToday) {
     score += 20
-    reasons.push('College deadline today — urgent!')
+    reasons.push(`🚨 College deadline TODAY — ${topic.topicName} must be done before midnight`)
+  } else if (topic.collegeDeadlineUrgency >= 8) {
+    score += (topic.collegeDeadlineUrgency / 10) * 10
+    reasons.push(`📅 College deadline in 1-2 days — do not skip this`)
+  } else if (topic.collegeDeadlineUrgency >= 5) {
+    score += (topic.collegeDeadlineUrgency / 10) * 10
+    reasons.push(`📅 Upcoming college deadline — urgency ${topic.collegeDeadlineUrgency}/10`)
   } else {
     score += (topic.collegeDeadlineUrgency / 10) * 10
-    if (topic.collegeDeadlineUrgency >= 7) reasons.push('Upcoming college deadline')
   }
 
   // ── 7. CAREER RELEVANCE (0-10) ──
   const careerScore = (topic.careerRelevance / 5) * 10
   score += careerScore
+  if (topic.careerRelevance === 5 && userContext.careerPaths.length > 0) {
+    reasons.push(`💼 Directly relevant to your target tracks: ${userContext.careerPaths.slice(0, 2).join(', ')}`)
+  } else if (topic.careerRelevance >= 4 && userContext.careerPaths.length > 0) {
+    reasons.push(`💼 High career relevance (${topic.careerRelevance}/5) for your selected tracks`)
+  }
 
   // ── 8. ACCURACY PENALTY ──
-  if (topic.accuracy > 0 && topic.accuracy < 60) {
+  if (topic.accuracy > 0 && topic.accuracy < 40) {
+    score *= 1.2
+    reasons.push(`❌ Very low accuracy (${Math.round(topic.accuracy)}%) — you need active practice, not just reading`)
+  } else if (topic.accuracy > 0 && topic.accuracy < 60) {
     score *= 1.15
-    reasons.push(`Accuracy needs improvement (${Math.round(topic.accuracy)}%)`)
+    reasons.push(`📉 Below-average accuracy (${Math.round(topic.accuracy)}%) — targeted practice will fix this fast`)
+  } else if (topic.accuracy >= 80 && effectiveMastery >= 70) {
+    reasons.push(`✅ Strong accuracy (${Math.round(topic.accuracy)}%) — light revision to maintain`)
   }
 
   // ── 9. DIFFICULTY ADJUSTMENT ──
-  // Low energy → prefer easier topics
   if (userContext.energyLevel === 'low' && topic.difficulty >= 4) {
     score *= 0.7
-  }
-  // High energy → prefer harder topics
-  if (userContext.energyLevel === 'high' && topic.difficulty >= 4) {
+    reasons.push(`😴 Difficulty ${topic.difficulty}/5 — skipped for low-energy slot, try tomorrow with full energy`)
+  } else if (userContext.energyLevel === 'high' && topic.difficulty >= 4) {
     score *= 1.1
+    reasons.push(`⚡ High energy now — tackling difficulty ${topic.difficulty}/5 while you're in the zone`)
+  } else if (userContext.energyLevel === 'low' && topic.difficulty <= 2) {
+    reasons.push(`🌙 Easy topic — perfect for a low-energy study session`)
   }
 
   // ── 10. BURNOUT RISK PENALTY ──
-  if (userContext.recentBurnoutRisk >= 7) {
+  if (userContext.recentBurnoutRisk >= 8) {
+    score *= 0.75
+    reasons.push('🔥 High burnout risk detected — only essentials scheduled, recovery is also progress')
+  } else if (userContext.recentBurnoutRisk >= 6) {
     score *= 0.85
+    reasons.push('⚠️ Elevated burnout risk — lighter load applied to protect consistency')
   }
 
   // ── 11. EFFORT NORMALIZATION ──
