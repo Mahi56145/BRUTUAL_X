@@ -8,40 +8,48 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: {
-      id: true,
-      name: true,
-      gateTarget: true,
-      careerPaths: true,
-      realityCheckStyle: true,
-      onboardingDone: true,
-    },
-  })
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        name: true,
+        gateTarget: true,
+        careerPaths: true,
+        realityCheckStyle: true,
+        onboardingDone: true,
+      },
+    })
 
-  const subjects = await prisma.subject.findMany({
-    orderBy: { order: 'asc' },
-    include: {
-      topics: {
-        orderBy: { order: 'asc' },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          importance: true,
-          difficulty: true,
-          gateRelevance: true,
-          careerRelevance: true,
+    const subjects = await prisma.subject.findMany({
+      orderBy: { order: 'asc' },
+      include: {
+        topics: {
+          orderBy: { order: 'asc' },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            importance: true,
+            difficulty: true,
+            gateRelevance: true,
+            careerRelevance: true,
+          },
         },
       },
-    },
-  })
+    })
 
-  return NextResponse.json({
-    user,
-    subjects,
-  })
+    return NextResponse.json({
+      user,
+      subjects,
+    })
+  } catch (err: any) {
+    console.error('[Onboarding API] Failed to fetch data from database:', err)
+    return NextResponse.json(
+      { error: 'Failed to fetch database records', details: err?.message || String(err) },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST(req: Request) {

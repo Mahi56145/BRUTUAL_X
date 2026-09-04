@@ -104,48 +104,58 @@ export default function OnboardingPage() {
   const [selectedCareers, setSelectedCareers] = useState<string[]>(['Backend Engineer'])
   const [dailyHours, setDailyHours] = useState(3)
   const [realityStyle, setRealityStyle] = useState('savage')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const res = await fetch('/api/onboarding')
-        if (res.status === 401) {
-          router.push('/login')
+  async function loadData() {
+    setLoading(true)
+    setErrorMessage(null)
+    try {
+      const res = await fetch('/api/onboarding')
+      if (res.status === 401) {
+        router.push('/login')
+        return
+      }
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.details || data.error || `HTTP ${res.status}: Failed to load`)
+      }
+      if (data.user) {
+        setUserName(data.user.name || 'Engineer')
+        if (data.user.onboardingDone) {
+          router.push('/dashboard')
           return
         }
-        const data = await res.json()
-        if (data.user) {
-          setUserName(data.user.name || 'Engineer')
-          if (data.user.onboardingDone) {
-            router.push('/dashboard')
-            return
-          }
-          if (data.user.gateTarget) setGateTarget(data.user.gateTarget)
-          if (data.user.realityCheckStyle) setRealityStyle(data.user.realityCheckStyle)
-          if (data.user.careerPaths) {
-            try {
-              const cp = JSON.parse(data.user.careerPaths)
-              if (Array.isArray(cp) && cp.length > 0) setSelectedCareers(cp)
-            } catch {}
-          }
+        if (data.user.gateTarget) setGateTarget(data.user.gateTarget)
+        if (data.user.realityCheckStyle) setRealityStyle(data.user.realityCheckStyle)
+        if (data.user.careerPaths) {
+          try {
+            const cp = JSON.parse(data.user.careerPaths)
+            if (Array.isArray(cp) && cp.length > 0) setSelectedCareers(cp)
+          } catch {}
         }
-        if (data.subjects) {
-          setSubjects(data.subjects)
-          // Default initial assessments to 0
-          const initial: Record<string, number> = {}
-          data.subjects.forEach((s: Subject) => {
-            s.topics.forEach((t: Topic) => {
-              initial[t.id] = 0
-            })
-          })
-          setAssessments(initial)
-        }
-      } catch (err) {
-        console.error('Failed to load onboarding data:', err)
-      } finally {
-        setLoading(false)
       }
+      if (data.subjects && data.subjects.length > 0) {
+        setSubjects(data.subjects)
+        // Default initial assessments to 0
+        const initial: Record<string, number> = {}
+        data.subjects.forEach((s: Subject) => {
+          s.topics.forEach((t: Topic) => {
+            initial[t.id] = 0
+          })
+        })
+        setAssessments(initial)
+      } else {
+        setErrorMessage('No subjects found in database. Please ensure the database is seeded.')
+      }
+    } catch (err: any) {
+      console.error('Failed to load onboarding data:', err)
+      setErrorMessage(err?.message || 'Database connection error')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     loadData()
   }, [router])
 
@@ -407,6 +417,32 @@ export default function OnboardingPage() {
                   <span style={{ color: 'var(--text-secondary)' }}> of {totalTopics} topics rated &gt; 0</span>
                 </div>
               </div>
+
+              {errorMessage && (
+                <div style={{
+                  padding: '14px 18px',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: 'rgba(255, 71, 87, 0.1)',
+                  border: '1px solid rgba(255, 71, 87, 0.3)',
+                  color: '#ff6b81',
+                  marginBottom: '20px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
+                  <div style={{ fontSize: '13px' }}>
+                    <strong>Database Error:</strong> {errorMessage}
+                  </div>
+                  <button
+                    onClick={loadData}
+                    className="btn btn-secondary"
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    Retry Connection
+                  </button>
+                </div>
+              )}
 
               {/* Subject Tabs */}
               <div style={{
