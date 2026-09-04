@@ -16,18 +16,24 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    const result = await signIn('credentials', {
-      name,
-      password,
-      redirect: false,
-    })
+    try {
+      const result = await signIn('credentials', {
+        name,
+        password,
+        redirect: false,
+      })
 
-    setLoading(false)
-    if (result?.error) {
-      setError('Invalid credentials. Try engineering123 as password.')
-    } else {
-      router.push('/dashboard')
-      router.refresh()
+      if (result?.error) {
+        setError('Invalid credentials. Password is engineering123')
+      } else {
+        router.push('/dashboard')
+        router.refresh()
+      }
+    } catch (err: any) {
+      console.error('Sign-in error:', err)
+      setError('Connection error or invalid credentials. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
